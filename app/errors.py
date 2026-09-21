@@ -34,3 +34,7 @@ class AppError(Exception):
 
 class DatasetError(AppError):
     error_type = ErrorType.DATASET_ERROR
+
+
+class InvalidInputError(AppError):
+    error_type = ErrorType.INVALID_INPUT

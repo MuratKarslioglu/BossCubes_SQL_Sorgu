@@ -1,6 +1,8 @@
 -r requirements-core.txt
 
 # --- Model / egitim yigini (Faz 3+) ---
+# Jetson/aarch64'te bu satiri PyPI'dan degil, JetPack surumunuze uygun
+# Jetson AI Lab index-url'inden kurun (bkz. README "Jetson / aarch64").
 torch>=2.3
 transformers>=4.44
 accelerate>=0.33
@@ -13,5 +15,8 @@ fastapi>=0.112
 uvicorn[standard]>=0.30
 
 # bitsandbytes yalnizca Linux/CUDA uzerinde calisir; macOS/MPS'te kurulmaz.
-# QLoRA bu nedenle opsiyoneldir (spec §30).
+# QLoRA bu nedenle opsiyoneldir (spec §30). Jetson'da bu kosul true olur
+# ama genel Linux aarch64 tekerlegi L4T runtime ile uyumsuz (kaynaktan
+# derleme gerekir) -- bu projede QLoRA'ya gerek olmadigindan Jetson'da
+# kurulumu atlayin (bkz. README "Jetson / aarch64").
 bitsandbytes>=0.43; sys_platform == "linux"

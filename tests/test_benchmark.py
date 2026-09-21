@@ -285,6 +285,149 @@ def test_main_writes_dump_predictions_when_requested(
     assert line["input"] == "X firması"
 
 
+# --- --batch_size ---
+
+
+def test_main_rejects_batch_size_with_allow_retry(write_jsonl, tmp_path, capsys):
+    test_path = write_jsonl("test.jsonl", [example("x")])
+    exit_code = benchmark.main(
+        [
+            "--model_name",
+            "org/model",
+            "--test_file",
+            str(test_path),
+            "--output_dir",
+            str(tmp_path / "out"),
+            "--batch_size",
+            "4",
+            "--allow_retry",
+        ]
+    )
+    assert exit_code == 1
+    assert "batch_size" in capsys.readouterr().err
+
+
+VALID_JSON_TEXT = (
+    '{"operation":"count","target":"sales","filters":[],"group_by":[],"order_by":null,"limit":null}'
+)
+
+
+def test_generate_batch_computes_per_example_timing_and_tokens():
+    tokenizer = MagicMock()
+    tokenizer.padding_side = "right"
+    tokenizer.pad_token_id = 0
+
+    batch_inputs = {
+        "input_ids": torch.tensor([[0, 11, 12], [13, 14, 15]]),
+        "attention_mask": torch.tensor([[0, 1, 1], [1, 1, 1]]),
+    }
+    encoding = MagicMock()
+    encoding.to.return_value = batch_inputs
+    tokenizer.return_value = encoding
+    tokenizer.decode.side_effect = ["{...}", "{...}"]
+
+    # prompt uzunlugu (input_ids.shape[-1]) = 3; satir 0'in 2. uretilen
+    # tokeni pad_token_id (erken EOS'u taklit eder), satir 1'de yok.
+    output_ids = torch.tensor([[0, 11, 12, 21, 0], [13, 14, 15, 22, 23]])
+    model = MagicMock()
+    model.generate.return_value = output_ids
+
+    loaded = MagicMock()
+    loaded.tokenizer = tokenizer
+    loaded.model = model
+    loaded.device = "cpu"
+
+    formatter = MagicMock()
+    formatter.format_inference.side_effect = lambda t: f"PROMPT:{t}"
+
+    results = benchmark._generate_batch(loaded, formatter, ["a", "bb"], max_new_tokens=5)
+
+    assert tokenizer.padding_side == "right"  # cagri sonrasi eski haline donmeli
+    assert len(results) == 2
+    _, timing0 = results[0]
+    _, timing1 = results[1]
+    assert timing0.prompt_tokens == 2
+    assert timing1.prompt_tokens == 3
+    assert timing0.generated_tokens == 1  # [21, 0] -> yalnizca 21 gercek
+    assert timing1.generated_tokens == 2  # [22, 23] -> ikisi de gercek
+    assert timing0.latency_ms == timing1.latency_ms  # batch suresi orneklere esit bolunur
+
+
+@patch("benchmark._generate_batch")
+@patch("app.inference.model_loader.load_base_model")
+def test_main_batched_writes_report_with_batch_size(
+    mock_load, mock_generate_batch, write_jsonl, tmp_path
+):
+    mock_load.return_value = _fake_loaded()
+    mock_generate_batch.side_effect = lambda loaded, formatter, texts, max_new_tokens: [
+        (VALID_JSON_TEXT, GenerationTiming(latency_ms=2.0, prompt_tokens=5, generated_tokens=3))
+        for _ in texts
+    ]
+    test_path = write_jsonl(
+        "test.jsonl",
+        [
+            example("X firması", filters=[]),
+            example("Y firması", filters=[]),
+            example("Z firması", filters=[]),
+        ],
+    )
+    output_dir = tmp_path / "out"
+
+    exit_code = benchmark.main(
+        [
+            "--model_name",
+            "org/tiny-model",
+            "--test_file",
+            str(test_path),
+            "--output_dir",
+            str(output_dir),
+            "--batch_size",
+            "2",
+        ]
+    )
+
+    assert exit_code == 0
+    # 3 ornek, batch_size=2 -> 2 chunk ([2, 1])
+    assert mock_generate_batch.call_count == 2
+    written = list(output_dir.glob("*.json"))
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+    assert payload["test_examples"] == 3
+    assert payload["batch_size"] == 2
+    assert payload["exact_match_rate"] == 1.0
+
+
+@patch("benchmark._generate_batch")
+@patch("app.inference.model_loader.load_base_model")
+def test_main_batched_normalizes_input_before_formatting(
+    mock_load, mock_generate_batch, write_jsonl, tmp_path
+):
+    """--batch_size > 1 modu, tek-ornek `extract()` yoluyla ayni ciktiyi
+    almak icin metni generate'ten once normalize etmelidir (bkz. run_batched
+    docstring'i)."""
+    mock_load.return_value = _fake_loaded()
+    mock_generate_batch.side_effect = lambda loaded, formatter, texts, max_new_tokens: [
+        (VALID_JSON_TEXT, GenerationTiming(latency_ms=1.0, prompt_tokens=1, generated_tokens=1))
+        for _ in texts
+    ]
+    test_path = write_jsonl("test.jsonl", [example("X   firması", filters=[])])
+
+    exit_code = benchmark.main(
+        [
+            "--model_name",
+            "org/tiny-model",
+            "--test_file",
+            str(test_path),
+            "--output_dir",
+            str(tmp_path / "out"),
+            "--batch_size",
+            "2",
+        ]
+    )
+    assert exit_code == 0
+    called_texts = mock_generate_batch.call_args.args[2]
+    assert called_texts == ["X firması"]
+
+
 def test_cli_help_runs_as_subprocess_without_torch_import_error():
     proc = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "benchmark.py"), "--help"],

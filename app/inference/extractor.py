@@ -17,8 +17,9 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from app.errors import AppError
+from app.errors import AppError, InvalidInputError
 from app.inference.parsing import ExtractionResult, parse_query_json
+from app.normalization.text import normalize_whitespace
 
 if TYPE_CHECKING:
     from app.inference.model_loader import LoadedModel
@@ -111,16 +112,16 @@ def extract(
     Basarisiz cikti asla sessizce onarilmaz (spec §37): ilk deneme
     basarisiz olursa en fazla bir kez, kucuk bir onarim istemiyle tekrar
     denenir; o da basarisiz olursa acik bir hata donulur.
-    """
-    if not text or not text.strip():
-        from app.errors import ErrorType
 
-        empty_result = ExtractionResult(
-            success=False,
-            error={"type": ErrorType.INVALID_INPUT.value, "message": "girdi metni bos olamaz"},
-        )
+    `text`, modele gonderilmeden once `normalize_whitespace` ile temizlenir
+    (spec §18: agresif degil, yalnizca bosluk/gorunmez karakter normalizasyonu)
+    -- bu ayni zamanda yalnizca gorunmez/bosluk karakterlerinden olusan
+    girdilerin bos girdi olarak dogru sekilde reddedilmesini saglar.
+    """
+    text = normalize_whitespace(text)
+    if not text:
         return ExtractionOutcome(
-            result=empty_result,
+            result=ExtractionResult.fail(InvalidInputError("girdi metni bos olamaz")),
             timing=GenerationTiming(latency_ms=0.0, prompt_tokens=0, generated_tokens=0),
             retried=False,
         )

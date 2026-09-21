@@ -169,6 +169,38 @@ def test_extract_rejects_empty_input(formatter):
     assert len(loaded.model.calls) == 0  # model hic cagrilmamali
 
 
+def test_extract_rejects_zero_width_only_input(formatter):
+    """Yalnizca gorunmez (zero-width) karakterlerden olusan girdi `.strip()`e
+    gorunmez kalir; normalize_whitespace bunlari silip bos girdi olarak
+    yakalamalidir (aksi halde model bos/anlamsiz bir prompt ile cagrilirdi)."""
+    loaded = FakeLoaded([])
+    outcome = extract("​​​", loaded, formatter)
+    assert outcome.result.success is False
+    assert outcome.result.error.type == "INVALID_INPUT"
+    assert len(loaded.model.calls) == 0
+
+
+def test_extract_normalizes_whitespace_before_prompting(formatter):
+    """Model'e gonderilen prompt, fazladan bosluk/NBSP temizlenmis halde
+    olmalidir (app/normalization/text.py'nin inference hattina baglanmasi)."""
+    recorded_prompts: list[str] = []
+
+    class RecordingTokenizer(FakeTokenizer):
+        def __call__(self, text, return_tensors="pt"):  # noqa: ARG002
+            recorded_prompts.append(text)
+            return super().__call__(text, return_tensors=return_tensors)
+
+    loaded = FakeLoaded([VALID_JSON])
+    loaded.tokenizer = RecordingTokenizer()
+
+    extract("X   firmasının satışları", loaded, formatter, max_new_tokens=32)
+
+    assert len(recorded_prompts) == 1
+    assert "X firmasının satışları" in recorded_prompts[0]
+    assert " " not in recorded_prompts[0]
+    assert "  " not in recorded_prompts[0]
+
+
 # --- opsiyonel entegrasyon: gercek (kucuk) modelle uctan uca ---
 
 

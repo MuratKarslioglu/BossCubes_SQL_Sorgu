@@ -206,6 +206,11 @@ def run_training(args: argparse.Namespace) -> dict[str, Any]:
         save_strategy=args.save_strategy,
         eval_strategy="epoch",
         report_to="none",
+        # HF Trainer'in bf16/fp16 bayraklari CUDA'nin karisik hassasiyet
+        # (AMP) otomatik-cast mekanizmasi icindir; MPS/CPU'da desteklenmez
+        # veya anlamsizdir. Model agirliklari zaten `loaded.dtype` ile dogru
+        # tipte yuklendigi icin (model_loader.py) bu bayraklarin CUDA disinda
+        # False kalmasi bilincli bir karardir, eksik bir ozellik degil.
         bf16=(loaded.dtype == torch.bfloat16 and loaded.device == "cuda"),
         fp16=(loaded.dtype == torch.float16 and loaded.device == "cuda"),
     )

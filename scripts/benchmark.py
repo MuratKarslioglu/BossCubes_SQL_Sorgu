@@ -27,9 +27,14 @@ import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from tqdm import tqdm
+
 # Script dogrudan calistirildiginda repo kokunu import yoluna ekle.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.errors import AppError  # noqa: E402
+from app.inference.parsing import ExtractionResult, parse_query_json  # noqa: E402
+from app.normalization.text import normalize_whitespace  # noqa: E402
 from training.dataset import load_examples  # noqa: E402
 from training.evaluate import (  # noqa: E402
     EvaluationRecord,
@@ -107,6 +112,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="her ornek icin {input, expected, predicted} JSONL'ini bu yola yaz",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="1'den buyukse ornekler toplu (batched) generate() ile calisir -- "
+        "Jetson gibi bellek bant genisligi kisitli cihazlarda buyuk test setlerini "
+        "kat kat hizlandirir. Kisitlamalar: --allow_retry ile birlikte kullanilamaz "
+        "(onarim mantigi tek ornek varsayar); rapordaki latency degerleri bu modda "
+        "GERCEK tek-istek gecikmesi DEGIL, batch-amortize edilmis bir yaklasimdir "
+        "(uretim gecikmesi icin --batch_size 1 kullanin).",
+    )
     return parser
 
 
@@ -148,6 +164,118 @@ def build_report(
     }
 
 
+def _generate_batch(loaded, formatter, texts: list[str], max_new_tokens: int):
+    """`texts` icin toplu (batched) generate() -- extract()'in tek-ornek yolunun
+    aksine, GPU'yu N ornek uzerinde paralel calistirarak bellek bant genisligi
+    darbogazini (Jetson gibi cihazlarda) amortize eder.
+
+    Donen `GenerationTiming.latency_ms` TUM batch'in suresidir/N -- gercek
+    tek-istek gecikmesi degil, ortalama bir yaklasimdir (bkz. --batch_size yardimi).
+    """
+    from app.inference.extractor import GenerationTiming
+
+    tokenizer = loaded.tokenizer
+    prompts = [formatter.format_inference(t) for t in texts]
+
+    original_padding_side = getattr(tokenizer, "padding_side", "right")
+    tokenizer.padding_side = "left"
+    try:
+        inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(loaded.device)
+    finally:
+        tokenizer.padding_side = original_padding_side
+    input_len = inputs["input_ids"].shape[-1]
+
+    start = time.perf_counter()
+    output_ids = loaded.model.generate(
+        **inputs,
+        max_new_tokens=max_new_tokens,
+        do_sample=False,
+        num_beams=1,
+        pad_token_id=tokenizer.pad_token_id,
+    )
+    batch_latency_ms = (time.perf_counter() - start) * 1000
+    per_example_latency_ms = batch_latency_ms / len(texts)
+
+    results = []
+    for i in range(len(texts)):
+        generated_ids = output_ids[i][input_len:]
+        raw_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        # Erken biten (EOS) diziler kalan pozisyonlarda pad_token_id ile
+        # doldurulur (transformers'in standart batch generate davranisi);
+        # gercek uretilen token sayisini almak icin bunlari saymiyoruz.
+        generated_tokens = int((generated_ids != tokenizer.pad_token_id).sum())
+        prompt_tokens = int(inputs["attention_mask"][i].sum())
+        results.append(
+            (
+                raw_text,
+                GenerationTiming(
+                    latency_ms=per_example_latency_ms,
+                    prompt_tokens=prompt_tokens,
+                    generated_tokens=generated_tokens,
+                ),
+            )
+        )
+    return results
+
+
+def run_batched(examples, loaded, formatter, args: argparse.Namespace) -> list[EvaluationRecord]:
+    """--batch_size > 1 icin ana dongu; extract()'in normalize+parse mantigini
+    (retry HARIC -- bkz. build_parser --batch_size yardimi) tekrarlar.
+
+    `load_examples` her `RawExample.input`i yukleme sirasinda zaten
+    `normalize_whitespace` sonrasi bos olmadigini dogruladigindan (bkz.
+    `training/dataset.py::RawExample._validate_input`), extract()'in
+    aksine burada ayrica bir "bos girdi" dalina gerek yoktur -- yine de
+    tek-ornek yoluyla AYNI ciktiyi almak icin metin generate'ten once
+    normalize edilir.
+    """
+    records: list[EvaluationRecord] = []
+    progress = tqdm(
+        range(0, len(examples), args.batch_size),
+        desc=f"Benchmark [batch={args.batch_size}] [{args.test_file.name}]",
+        unit="batch",
+    )
+    for start_idx in progress:
+        chunk = examples[start_idx : start_idx + args.batch_size]
+        texts = [normalize_whitespace(ex.input) for ex in chunk]
+
+        generated = _generate_batch(loaded, formatter, texts, args.max_new_tokens)
+        for ex, (raw_text, timing) in zip(chunk, generated, strict=True):
+            try:
+                result = ExtractionResult.ok(parse_query_json(raw_text))
+            except AppError as exc:
+                result = ExtractionResult.fail(exc)
+            records.append(
+                EvaluationRecord(
+                    input=ex.input,
+                    expected=ex.output,
+                    result=result,
+                    latency_ms=timing.latency_ms,
+                    prompt_tokens=timing.prompt_tokens,
+                    generated_tokens=timing.generated_tokens,
+                    metadata=ex.metadata,
+                )
+            )
+    return records
+
+
+def print_compact_summary(report: dict[str, object]) -> None:
+    """`by_status`/`by_family`/`by_noise` gibi genis kirilimlari EKRANA basmaz
+    (bunlar zaten tam haliyle diskteki JSON dosyasinda duruyor) -- yalnizca
+    spec §23'un baslik metriklerini ozetler."""
+    latency = report["latency"]
+    print("\nSonuclar:")
+    print(f"  Ornek sayisi         : {report['test_examples']}")
+    print(f"  Valid JSON orani     : {report['valid_json_rate']:.1%}")
+    print(f"  Sema gecerlilik orani: {report['schema_validity_rate']:.1%}")
+    print(f"  Exact match          : {report['exact_match_rate']:.1%}")
+    print(f"  Semantic match       : {report['semantic_match_rate']:.1%}")
+    print(
+        "  Gecikme (ort/medyan/p95): "
+        f"{latency['mean_ms']:.0f} / {latency['median_ms']:.0f} / {latency['p95_ms']:.0f} ms"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -162,6 +290,14 @@ def main(argv: list[str] | None = None) -> int:
         examples = examples[: args.limit]
     if not examples:
         print("HATA: benchmark icin ornek kalmadi (bos dosya veya --limit 0)", file=sys.stderr)
+        return 1
+
+    if args.batch_size > 1 and args.allow_retry:
+        print(
+            "HATA: --batch_size > 1, --allow_retry ile birlikte desteklenmiyor "
+            "(onarim mantigi tek ornek varsayar); tek-retry kolu icin --batch_size 1 kullanin.",
+            file=sys.stderr,
+        )
         return 1
 
     # Gec import: --help ve dogrulama hatalari torch'u zorunlu kilmaz.
@@ -180,28 +316,39 @@ def main(argv: list[str] | None = None) -> int:
     formatter_kwargs = {"tokenizer": loaded.tokenizer} if prompt_format == "chat" else {}
     formatter = get_formatter(prompt_format, **formatter_kwargs)
 
-    records: list[EvaluationRecord] = []
-    for example in examples:
-        outcome = extract(
-            example.input,
-            loaded,
-            formatter,
-            max_new_tokens=args.max_new_tokens,
-            allow_retry=args.allow_retry,
+    if args.batch_size > 1:
+        print(
+            f"UYARI: --batch_size {args.batch_size} kullaniliyor -- rapordaki latency "
+            "degerleri batch-amortize edilmistir, gercek tek-istek (uretim) gecikmesini "
+            "yansitmaz.",
+            file=sys.stderr,
         )
-        records.append(
-            EvaluationRecord(
-                input=example.input,
-                expected=example.output,
-                result=outcome.result,
-                latency_ms=outcome.timing.latency_ms,
-                prompt_tokens=outcome.timing.prompt_tokens,
-                generated_tokens=outcome.timing.generated_tokens,
-                metadata=example.metadata,
+        records = run_batched(examples, loaded, formatter, args)
+    else:
+        records = []
+        progress = tqdm(examples, desc=f"Benchmark [{args.test_file.name}]", unit="ornek")
+        for example in progress:
+            outcome = extract(
+                example.input,
+                loaded,
+                formatter,
+                max_new_tokens=args.max_new_tokens,
+                allow_retry=args.allow_retry,
             )
-        )
+            records.append(
+                EvaluationRecord(
+                    input=example.input,
+                    expected=example.output,
+                    result=outcome.result,
+                    latency_ms=outcome.timing.latency_ms,
+                    prompt_tokens=outcome.timing.prompt_tokens,
+                    generated_tokens=outcome.timing.generated_tokens,
+                    metadata=example.metadata,
+                )
+            )
 
     report = build_report(args, records, model_load_seconds, loaded.device, str(loaded.dtype))
+    report["batch_size"] = args.batch_size
 
     if args.dump_predictions is not None:
         args.dump_predictions.parent.mkdir(parents=True, exist_ok=True)
@@ -214,8 +361,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    print(f"\nSonuclar yazildi: {out_path}", file=sys.stderr)
+    print_compact_summary(report)
+    print(f"\nTam rapor: {out_path}", file=sys.stderr)
     return 0
 
 

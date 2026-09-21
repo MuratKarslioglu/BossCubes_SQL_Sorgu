@@ -157,6 +157,18 @@ py -3.12 -m venv .venv
 pip install -r requirements-dev.txt
 ```
 
+### Jetson / aarch64 (eğitim ortamı)
+
+`requirements.txt`'teki `torch>=2.3` burada **genel PyPI'dan kurulmamalı** — standart aarch64 tekerlekleri Jetson'ın CUDA'sını (Tegra/iGPU) desteklemez. Bunun yerine JetPack sürümünüze uygun Jetson AI Lab index-url'i kullanılmalı, örn. JetPack 7.2 / CUDA 13.2 / Python 3.12 için:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu132
+```
+
+Bilinen sınırlama: Jetson Orin'in compute capability'si (8.7, `sm_87`) şu an ne "sbsa" (sunucu sınıfı aarch64) ne de Jetson'a özel "jp6" tekerlek ailesi tarafından native desteklenmiyor (`torch.cuda.get_arch_list()` ile doğrulanabilir) — model yine de CUDA üzerinde çalışır ama bu nedenle tek-örnek (`batch_size=1`) üretim, cihazın bellek bant genişliği tarafından ağır şekilde darboğazlanır. `scripts/benchmark.py --batch_size N` (N>1) bunu ölçülebilir şekilde telafi eder (bkz. o dosyadaki `--batch_size` yardım metni); gerçek tek-istek üretim gecikmesi için yine de `batch_size=1` kullanın.
+
+`bitsandbytes>=0.43; sys_platform=="linux"` satırı Jetson'da da `true` olur ama genel Linux aarch64 tekerlekleri L4T runtime ile uyumsuzdur — Jetson'da kaynaktan derleme gerekir. Bu proje 0.5B–1.5B sınıfı modeller için düz LoRA kullandığından (QLoRA'ya gerek yok), bitsandbytes kurulumunu Jetson'da tamamen atlamak en basit yol.
+
 **Yalnızca Faz 1+2 ile çalışacaksanız** (şema, dataset doğrulama, formatlama) torch'a gerek yoktur — ~2.5 GB indirme yerine:
 
 ```bash
@@ -330,7 +342,7 @@ python scripts/benchmark.py \
   --output_dir benchmarks/
 ```
 
-`training/evaluate.py` tamamen torch'tan bağımsızdır — `app.inference.parsing.ExtractionResult`i girdi alır, gerçek model olmadan test edilir (50 test). `scripts/benchmark.py` gerçek bir tiny modelle, hem V1 hem V2 (karışık `status` dağılımlı) verilerle uçtan uca denenmiştir.
+`training/evaluate.py` tamamen torch'tan bağımsızdır — `app.inference.parsing.ExtractionResult`i girdi alır, gerçek model olmadan test edilir (53 test). `scripts/benchmark.py` gerçek bir tiny modelle, hem V1 hem V2 (karışık `status` dağılımlı) verilerle uçtan uca denenmiştir.
 
 ## API
 

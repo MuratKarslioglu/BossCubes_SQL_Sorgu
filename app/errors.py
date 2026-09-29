@@ -38,3 +38,7 @@ class DatasetError(AppError):
 
 class InvalidInputError(AppError):
     error_type = ErrorType.INVALID_INPUT
+
+
+class ModelInferenceError(AppError):
+    error_type = ErrorType.MODEL_INFERENCE_ERROR

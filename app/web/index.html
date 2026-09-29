@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sorgu Atölyesi · Türkçe sorgu değerlendirme</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/"
+        >sorgu<span>atölyesi</span><span class="brand-dot">●</span></a
+      ><span class="local-tag">YEREL DEĞERLENDİRME</span>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">TÜRKÇEDEN YAPILANDIRILMIŞ SORGUYA</p>
+          <h1>Bir soru sorun.<br /><span>Sonucu birlikte ölçelim.</span></h1>
+          <p class="subtitle">
+            İsteğinizi kendi kelimelerinizle yazın, modelin yorumunu inceleyin
+            ve doğruluğunu değerlendirin.
+          </p>
+        </div>
+        <aside class="connection">
+          <span id="health-dot" class="dot"></span
+          ><span id="health-label">Model kontrol ediliyor…</span>
+          <p id="model-info"></p>
+        </aside>
+      </section>
+      <div id="error-banner" class="banner error" role="alert" hidden></div>
+      <section class="workspace">
+        <article class="panel question-panel">
+          <div class="panel-heading">
+            <span class="step">01</span>
+            <h2>İsteğiniz</h2>
+            <span class="muted">Türkçe doğal dil</span>
+          </div>
+          <form id="query-form">
+            <label for="prompt">Hangi veriyi görmek istiyorsunuz?</label
+            ><textarea
+              id="prompt"
+              name="text"
+              rows="7"
+              maxlength="4000"
+              placeholder="Örn. ABC firmasının satış sayısını getir."
+              required
+            ></textarea>
+            <div class="input-footer">
+              <span id="char-count">0 / 4000</span
+              ><span>⌘ / Ctrl + Enter ile çalıştır</span>
+            </div>
+            <div class="examples">
+              <p>Bir örnekle başlayın</p>
+              <button
+                type="button"
+                class="example"
+                data-prompt="ABC firmasının satış sayısını getir."
+              >
+                Firma satışları ↗</button
+              ><button
+                type="button"
+                class="example"
+                data-prompt="İstanbul'daki toplam satış tutarını getir."
+              >
+                Şehir bazında toplam ↗</button
+              ><button
+                type="button"
+                class="example"
+                data-prompt="En iyisini getir."
+              >
+                Belirsiz istek ↗
+              </button>
+            </div>
+            <details>
+              <summary>
+                Beklenen JSON ile karşılaştır <span>isteğe bağlı</span>
+              </summary>
+              <label for="expected">Beklediğiniz sorgu JSON'u</label
+              ><textarea
+                id="expected"
+                rows="5"
+                spellcheck="false"
+                placeholder='{"operation":"count","target":"sales",...}'
+              ></textarea>
+              <p class="hint">
+                Alanları ve değerleri kendi beklentinizle karşılaştırır. Boş
+                bırakırsanız sonucu elle değerlendirebilirsiniz.
+              </p>
+            </details>
+            <button id="run-button" type="submit" class="primary">
+              Sorguyu çalıştır <span>→</span>
+            </button>
+          </form>
+          <p class="privacy-note">
+            Denemeler ve geri bildirimler bu cihazda saklanır.
+          </p>
+        </article>
+        <article class="panel result-panel">
+          <div class="panel-heading">
+            <span class="step">02</span>
+            <h2>Modelin yorumu</h2>
+            <span id="result-state" class="status-label">Bekleniyor</span>
+          </div>
+          <div id="empty-result" class="empty">
+            <div class="empty-icon">{ }</div>
+            <h3>İlk sorunuzla başlayın</h3>
+            <p>
+              İşlem, hedef ve filtreler burada görünecek.<br />Sonrasında doğru
+              olup olmadığını işaretleyebilirsiniz.
+            </p>
+          </div>
+          <div id="loading-result" class="empty" role="status" hidden>
+            <div class="spinner"></div>
+            <h3>Sorgunuz işleniyor</h3>
+            <p id="elapsed">0,0 saniye</p>
+          </div>
+          <div id="result" hidden>
+            <div class="metrics">
+              <div>
+                <p>TOPLAM SÜRE</p>
+                <strong id="latency">—</strong>
+              </div>
+              <div>
+                <p>ÜRETİLEN TOKEN</p>
+                <strong id="tokens">—</strong>
+              </div>
+              <div>
+                <p>ŞEMA</p>
+                <strong id="schema-status">—</strong>
+              </div>
+            </div>
+            <div id="interpretation"></div>
+            <div id="comparison" class="comparison" hidden></div>
+            <details id="json-detail">
+              <summary>
+                JSON çıktısı
+                <button id="copy-json" type="button">Kopyala</button>
+              </summary>
+              <pre id="json-output"></pre>
+            </details>
+            <details>
+              <summary>Süre ayrıntıları</summary>
+              <dl id="timing-detail"></dl>
+              <p class="hint">
+                İlk token ölçümü profiler benchmark'ında ayrıca yapılır.
+              </p>
+            </details>
+            <div class="feedback">
+              <p class="eyebrow">SİZİN DEĞERLENDİRMENİZ</p>
+              <h3>Model isteğinizi doğru yorumladı mı?</h3>
+              <div class="rating-buttons">
+                <button type="button" id="correct-button">✓ Evet, doğru</button
+                ><button type="button" id="incorrect-button">
+                  ✕ Hayır, hatalı
+                </button>
+              </div>
+              <form id="feedback-form" hidden>
+                <label for="category">Hata hangi bölümde?</label
+                ><select id="category">
+                  <option value="other">Diğer / genel</option>
+                  <option value="operation">İşlem</option>
+                  <option value="target">Hedef</option>
+                  <option value="filters">Filtreler</option>
+                  <option value="group_by">Gruplama</option>
+                  <option value="order_by">Sıralama</option>
+                  <option value="limit">Sonuç sayısı</option>
+                  <option value="status">Belirsizlik / durum</option></select
+                ><label for="note"
+                  >Kısa bir not <span class="muted">isteğe bağlı</span></label
+                ><textarea
+                  id="note"
+                  rows="2"
+                  maxlength="4000"
+                  placeholder="Beklediğiniz sonucu tarif edebilirsiniz."
+                ></textarea
+                ><button type="submit" class="secondary">
+                  Değerlendirmeyi kaydet
+                </button>
+              </form>
+              <p id="feedback-message" role="status"></p>
+            </div>
+          </div>
+        </article>
+      </section>
+      <section class="report-bar">
+        <div>
+          <span class="eyebrow">DEĞERLENDİRME KAYITLARI</span>
+          <p id="report-summary">Henüz değerlendirme yok.</p>
+        </div>
+        <div class="exports">
+          <a href="/export?format=jsonl" download>JSONL indir ↓</a
+          ><a href="/export?format=csv" download>CSV indir ↓</a>
+        </div>
+      </section>
+      <footer>
+        <span
+          >Şema geçerliliği, isteğin doğru yorumlandığını tek başına
+          göstermez.</span
+        ><a href="/docs">API belgeleri ↗</a>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -94,6 +94,7 @@ def load_base_model(
     model_name: str,
     device: DevicePreference = "auto",
     dtype: DtypePreference = "auto",
+    attention_implementation: str = "auto",
 ) -> LoadedModel:
     """Temel modeli ve tokenizer'i yukler (LoRA uygulanmamis haliyle)."""
     if not model_name:
@@ -108,14 +109,16 @@ def load_base_model(
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(model_name, dtype=resolved_dtype)
+        kwargs = {"dtype": resolved_dtype}
+        if attention_implementation != "auto":
+            kwargs["attn_implementation"] = attention_implementation
+        model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
+        model.to(resolved_device)
     except Exception as exc:
         raise ModelLoadError(f"model yuklenemedi: {model_name!r}: {exc}") from exc
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
-    model.to(resolved_device)
 
     return LoadedModel(
         model=model,
@@ -157,3 +160,16 @@ def load_adapter(base_model: PreTrainedModel, adapter_path: str | Path) -> _Peft
         return PeftModel.from_pretrained(base_model, str(path))
     except Exception as exc:
         raise ModelLoadError(f"adapter yuklenemedi: {path}: {exc}") from exc
+
+
+def prepare_for_inference(loaded: LoadedModel, merge_adapter: bool = False) -> LoadedModel:
+    """Apply inference-only optimizations without changing training model loading."""
+    try:
+        if merge_adapter and isinstance(loaded.model, PeftModel):
+            loaded.model = loaded.model.merge_and_unload(safe_merge=True)
+        loaded.model.eval()
+        loaded.model.requires_grad_(False)
+        loaded.model.config.use_cache = True
+    except Exception as exc:
+        raise ModelLoadError("model cikarim icin hazirlanamadi") from exc
+    return loaded

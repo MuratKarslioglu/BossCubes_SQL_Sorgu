@@ -1,0 +1,15 @@
+# Tested on Python 3.12/macOS. Torch intentionally excluded: install a
+# platform-compatible wheel separately, especially on NVIDIA Jetson.
+pydantic==2.13.5
+pydantic-settings==2.15.0
+transformers==5.17.0
+accelerate==1.15.0
+peft==0.21.0
+trl==1.14.0
+datasets==5.0.1
+fastapi==0.141.1
+starlette==1.7.0
+uvicorn==0.54.0
+httpx==0.28.1
+pytest==9.1.1
+ruff==0.16.9

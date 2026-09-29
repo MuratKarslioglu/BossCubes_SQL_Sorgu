@@ -1,0 +1,10 @@
+-r inference.txt
+
+# Development/training only. On Jetson install compatible PyTorch first,
+# then requirements/inference.txt; do not replace it with a generic PyPI wheel.
+torch>=2.6
+trl>=1.14,<1.15
+datasets>=5.0,<5.1
+sqlglot>=25.0,<26
+
+# Optional QLoRA dependencies are not installed by default.

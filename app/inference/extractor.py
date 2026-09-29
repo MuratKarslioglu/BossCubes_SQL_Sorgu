@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.errors import AppError, InvalidInputError
+from app.inference.generation import GenerationTiming, generate_prompts
 from app.inference.parsing import ExtractionResult, parse_query_json
 from app.normalization.text import normalize_whitespace
 
@@ -28,41 +29,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class GenerationTiming:
-    """Benchmark scripti (Faz 5) icin ham zamanlama/token bilgisi."""
-
-    latency_ms: float
-    prompt_tokens: int
-    generated_tokens: int
-
-
 def _generate_from_prompt(
-    loaded: LoadedModel, prompt: str, max_new_tokens: int
+    loaded: LoadedModel,
+    prompt: str,
+    max_new_tokens: int,
+    **options,
 ) -> tuple[str, GenerationTiming]:
     """Verilen tam prompt'tan ham tamamlama metnini uretir."""
-    inputs = loaded.tokenizer(prompt, return_tensors="pt").to(loaded.device)
-    prompt_len = inputs["input_ids"].shape[-1]
-
-    start = time.perf_counter()
-    output_ids = loaded.model.generate(
-        **inputs,
-        max_new_tokens=max_new_tokens,
-        do_sample=False,
-        num_beams=1,
-        pad_token_id=loaded.tokenizer.pad_token_id,
-    )
-    latency_ms = (time.perf_counter() - start) * 1000
-
-    generated_ids = output_ids[0][prompt_len:]
-    raw_text = loaded.tokenizer.decode(generated_ids, skip_special_tokens=True)
-
-    timing = GenerationTiming(
-        latency_ms=latency_ms,
-        prompt_tokens=prompt_len,
-        generated_tokens=int(generated_ids.shape[-1]),
-    )
-    return raw_text, timing
+    return generate_prompts(loaded, [prompt], max_new_tokens, **options)[0]
 
 
 def generate_raw(
@@ -70,9 +44,12 @@ def generate_raw(
     formatter: PromptFormatter,
     text: str,
     max_new_tokens: int,
+    **options,
 ) -> tuple[str, GenerationTiming]:
     """Modelden ham (JSON izole edilmemis) tamamlama metnini uretir."""
-    return _generate_from_prompt(loaded, formatter.format_inference(text), max_new_tokens)
+    return _generate_from_prompt(
+        loaded, formatter.format_inference(text), max_new_tokens, **options
+    )
 
 
 def _build_repair_prompt(original_prompt: str, bad_output: str) -> str:
@@ -106,6 +83,8 @@ def extract(
     formatter: PromptFormatter,
     max_new_tokens: int = 192,
     allow_retry: bool = True,
+    max_input_tokens: int | None = None,
+    profile_tokens: bool = False,
 ) -> ExtractionOutcome:
     """Spec §16'nin tam akisi + spec §17'nin en fazla bir tekrar politikasi.
 
@@ -118,6 +97,7 @@ def extract(
     -- bu ayni zamanda yalnizca gorunmez/bosluk karakterlerinden olusan
     girdilerin bos girdi olarak dogru sekilde reddedilmesini saglar.
     """
+    request_start = time.perf_counter()
     text = normalize_whitespace(text)
     if not text:
         return ExtractionOutcome(
@@ -126,12 +106,24 @@ def extract(
             retried=False,
         )
 
-    raw_text, timing = generate_raw(loaded, formatter, text, max_new_tokens)
+    raw_text, timing = generate_raw(
+        loaded,
+        formatter,
+        text,
+        max_new_tokens,
+        max_input_tokens=max_input_tokens,
+        profile_tokens=profile_tokens,
+    )
+    parse_start = time.perf_counter()
 
     try:
         result = ExtractionResult.ok(parse_query_json(raw_text))
+        timing.parse_ms = (time.perf_counter() - parse_start) * 1000
+        timing.total_ms = (time.perf_counter() - request_start) * 1000
         return ExtractionOutcome(result=result, timing=timing, retried=False)
     except AppError as first_error:
+        timing.parse_ms = (time.perf_counter() - parse_start) * 1000
+        timing.total_ms = (time.perf_counter() - request_start) * 1000
         if not allow_retry:
             return ExtractionOutcome(
                 result=ExtractionResult.fail(first_error), timing=timing, retried=False
@@ -142,13 +134,24 @@ def extract(
             first_error.error_type.value,
         )
         repair_prompt = _build_repair_prompt(formatter.format_inference(text), raw_text)
-        retry_text, retry_timing = _generate_from_prompt(loaded, repair_prompt, max_new_tokens)
+        retry_text, retry_timing = _generate_from_prompt(
+            loaded,
+            repair_prompt,
+            max_new_tokens,
+            max_input_tokens=max_input_tokens,
+            profile_tokens=profile_tokens,
+        )
         total_timing = GenerationTiming(
             latency_ms=timing.latency_ms + retry_timing.latency_ms,
             prompt_tokens=retry_timing.prompt_tokens,
             generated_tokens=timing.generated_tokens + retry_timing.generated_tokens,
+            tokenize_ms=timing.tokenize_ms + retry_timing.tokenize_ms,
+            decode_ms=timing.decode_ms + retry_timing.decode_ms,
+            parse_ms=timing.parse_ms,
+            total_ms=timing.total_ms + retry_timing.total_ms,
+            first_token_ms=timing.first_token_ms,
         )
-
+        parse_start = time.perf_counter()
         try:
             result = ExtractionResult.ok(parse_query_json(retry_text))
             return ExtractionOutcome(result=result, timing=total_timing, retried=True)
@@ -156,3 +159,7 @@ def extract(
             return ExtractionOutcome(
                 result=ExtractionResult.fail(second_error), timing=total_timing, retried=True
             )
+        finally:
+            parse_ms = (time.perf_counter() - parse_start) * 1000
+            total_timing.parse_ms += parse_ms
+            total_timing.total_ms = (time.perf_counter() - request_start) * 1000

@@ -3,7 +3,7 @@
 Bu modul torch'tan BAGIMSIZDIR: girdi olarak beklenen bir `QueryRequest` ile
 modelin urettigi `ExtractionResult`i (bkz. `app.inference.parsing`) alir.
 Boylece gercek model cikarimindan tamamen ayri, hizli ve saf test edilebilir;
-`scripts/benchmark.py` gercek modelle uretilen kayitlari buraya besler.
+`main.py benchmark` gercek modelle uretilen kayitlari buraya besler.
 
 BLEU/ROUGE KULLANILMAZ (spec §22). Hesaplanan metrikler:
     - valid JSON orani            (§22.1)
@@ -89,7 +89,7 @@ class EvaluationRecord:
     def to_dict(self) -> dict[str, object]:
         """Ornek bazli {input, expected, predicted, error, exact_match, latency_ms}.
 
-        `scripts/benchmark.py`'nin `--dump_predictions` ciktisi bunu kullanir;
+        `main.py benchmark`'nin `--dump_predictions` ciktisi bunu kullanir;
         siniflandirma/exact-match `classify`/`exact_match` ile ayni kaynaktan gelir.
         """
         predicted = self.result.data if self.status is RecordStatus.OK else None
@@ -112,6 +112,8 @@ def _filter_signature(f: FilterCondition) -> tuple[str, str, str]:
 
 def semantic_match(expected: QueryRequest, predicted: QueryRequest) -> bool:
     """Yapi-duyarli esitlik (spec §22.5): bkz. modul docstring'i."""
+    if expected.status != predicted.status:
+        return False
     if expected.operation != predicted.operation:
         return False
     if expected.target != predicted.target:

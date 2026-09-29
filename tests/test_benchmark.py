@@ -17,9 +17,7 @@ import pytest
 torch = pytest.importorskip("torch", reason="Faz 3+ testleri icin tam requirements.txt gerekir")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
-import benchmark  # noqa: E402
-
+from app.cli import benchmark  # noqa: E402
 from app.errors import AppError  # noqa: E402
 from app.inference.extractor import ExtractionOutcome, GenerationTiming  # noqa: E402
 from app.inference.parsing import ExtractionResult  # noqa: E402
@@ -224,7 +222,8 @@ def test_main_respects_limit(mock_load, mock_extract, write_jsonl, tmp_path):
             "2",
         ]
     )
-    assert mock_extract.call_count == 2
+    # One cold/warmup request is excluded from the two measured examples.
+    assert mock_extract.call_count == 3
 
 
 # --- dump_predictions ---
@@ -353,7 +352,7 @@ def test_generate_batch_computes_per_example_timing_and_tokens():
     assert timing0.latency_ms == timing1.latency_ms  # batch suresi orneklere esit bolunur
 
 
-@patch("benchmark._generate_batch")
+@patch("app.cli.benchmark._generate_batch")
 @patch("app.inference.model_loader.load_base_model")
 def test_main_batched_writes_report_with_batch_size(
     mock_load, mock_generate_batch, write_jsonl, tmp_path
@@ -396,7 +395,7 @@ def test_main_batched_writes_report_with_batch_size(
     assert payload["exact_match_rate"] == 1.0
 
 
-@patch("benchmark._generate_batch")
+@patch("app.cli.benchmark._generate_batch")
 @patch("app.inference.model_loader.load_base_model")
 def test_main_batched_normalizes_input_before_formatting(
     mock_load, mock_generate_batch, write_jsonl, tmp_path
@@ -430,7 +429,7 @@ def test_main_batched_normalizes_input_before_formatting(
 
 def test_cli_help_runs_as_subprocess_without_torch_import_error():
     proc = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "scripts" / "benchmark.py"), "--help"],
+        [sys.executable, "-m", "app.cli.benchmark", "--help"],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,

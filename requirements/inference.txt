@@ -1,0 +1,6 @@
+-r web.txt
+transformers>=5.17,<5.18
+accelerate>=1.15,<1.16
+peft>=0.21,<0.22
+tqdm>=4.70,<5
+# PyTorch separately: macOS/CPU via PyPI; Jetson via a JetPack-compatible wheel.

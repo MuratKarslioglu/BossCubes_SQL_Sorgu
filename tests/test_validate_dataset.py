@@ -14,12 +14,11 @@ import pytest
 from .conftest import example
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "scripts" / "validate_dataset.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
+        [sys.executable, "-m", "scripts.data.validate", *args],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,

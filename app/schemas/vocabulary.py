@@ -4,7 +4,7 @@ Bunlar gecicidir. Isverenin gercek veritabani semasi geldiginde bu dosya
 degisecek; Pydantic modelleri degismeyecek. Bu ayrim bilinclidir.
 
 Bu listeler sema dogrulamasinda ZORLANMAZ; yalnizca
-`scripts/validate_dataset.py --strict-vocabulary` ile uygulanir.
+`main.py validate --strict-vocabulary` ile uygulanir.
 """
 
 from __future__ import annotations

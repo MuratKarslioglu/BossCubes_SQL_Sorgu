@@ -1,4 +1,4 @@
-# Bagimliliklar requirements*.txt dosyalarinda tutulur.
+# Bagimliliklar requirements/ altinda tutulur; requirements.txt standart calistirma kurulumudur.
 # Bu dosya yalnizca arac konfigurasyonu icindir; build backend tanimlamaz.
 
 [tool.pytest.ini_options]

@@ -33,11 +33,12 @@ def clean_env(monkeypatch, tmp_path):
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("app.paths.PROJECT_ROOT", tmp_path)
 
 
 def test_defaults_match_env_example():
     settings = get_settings()
-    assert settings.adapter_path == "./models/latest"
+    assert settings.adapter_path == "./model_adapter"
     assert settings.max_new_tokens == 192
     assert settings.device == "auto"
     assert settings.model_dtype == "auto"

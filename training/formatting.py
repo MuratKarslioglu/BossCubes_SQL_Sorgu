@@ -119,6 +119,13 @@ def available_formatters() -> list[str]:
     return sorted(_REGISTRY)
 
 
+def resolve_prompt_format(name: str, tokenizer: object) -> str:
+    """Select the tokenizer's training-compatible prompt format."""
+    if name != "auto":
+        return name
+    return "chat" if getattr(tokenizer, "chat_template", None) else "plain"
+
+
 def get_formatter(name: str, **kwargs: object) -> PromptFormatter:
     """Isimle formatter uretir (spec §14: format kolayca degisebilmeli)."""
     try:

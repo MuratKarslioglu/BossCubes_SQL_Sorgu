@@ -1,0 +1,5 @@
+-r training.txt
+
+pytest>=8.2
+ruff>=0.6
+httpx>=0.28,<0.29

@@ -22,18 +22,18 @@ import argparse
 import json
 import logging
 import random
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-# Script dogrudan calistirildiginda repo kokunu import yoluna ekle.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from app.errors import AppError, ErrorType  # noqa: E402
-from app.schemas.query import to_canonical_json  # noqa: E402
-from training.dataset import LoadResult, load_examples  # noqa: E402
-from training.formatting import PromptFormatter, get_formatter  # noqa: E402
+from app.errors import AppError, ErrorType
+from app.schemas.query import to_canonical_json
+from training.dataset import LoadResult, load_examples
+from training.formatting import (
+    PromptFormatter,
+    get_formatter,
+    resolve_prompt_format,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def _require_valid(result: LoadResult, label: str) -> LoadResult:
 
 
 def _reject_challenge_test(result: LoadResult, label: str) -> None:
-    """CLAUDE_V2_MIGRATION.md: 'Never train on challenge_test.jsonl'.
+    """Challenge test examples must never enter training or validation.
 
     Iki bagimsiz sinyalle kontrol edilir -- dosya adi VE (varsa)
     `metadata.split` -- boylece dosya yeniden adlandirilsa bile ornekler
@@ -109,13 +109,6 @@ def build_dataset(result: LoadResult, formatter: PromptFormatter) -> Any:
     from datasets import Dataset
 
     return Dataset.from_list(to_prompt_completion_pairs(result, formatter))
-
-
-def resolve_prompt_format(name: str, tokenizer: object) -> str:
-    """`auto`: tokenizer'in chat template'i varsa chat, yoksa plain (spec §14)."""
-    if name != "auto":
-        return name
-    return "chat" if getattr(tokenizer, "chat_template", None) else "plain"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

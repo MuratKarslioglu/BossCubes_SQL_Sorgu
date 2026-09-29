@@ -1,6 +1,6 @@
 # İşverenden Veri Talebi — Kontrol Listesi
 
-Bu doküman, Türkçe → SQL-JSON çıkarım sisteminin sentetik/prototip aşamadan gerçek üretim verisine geçmesi için işverenden talep edilmesi gereken bilgi ve verileri listeler. Şu ana kadar model **hiç gerçek kullanıcı sorusu ve hiç gerçek veritabanı şeması görmedi** — mevcut eğitim verisi (`datasets/sql_json_dataset_v2_professional/`) tamamen sentetik olarak üretildi (bkz. `docs/text_to_sql_json_project_spec.md` §35). Aşağıdaki maddeler ne kadar eksiksiz doldurulursa, sistemin gerçek kullanımda ne kadar güvenilir olacağı o kadar netleşir.
+Bu doküman, Türkçe → SQL-JSON çıkarım sisteminin sentetik/prototip aşamadan gerçek üretim verisine geçmesi için işverenden talep edilmesi gereken bilgi ve verileri listeler. Şu ana kadar model **hiç gerçek kullanıcı sorusu ve hiç gerçek veritabanı şeması görmedi** — mevcut eğitim verisi (`storage/datasets/sql_json_dataset_v2_professional/`) tamamen sentetik olarak üretildi (bkz. `docs/text_to_sql_json_project_spec.md` §35). Aşağıdaki maddeler ne kadar eksiksiz doldurulursa, sistemin gerçek kullanımda ne kadar güvenilir olacağı o kadar netleşir.
 
 Her bölüm bağımsız doldurulabilir; eksik bırakılan bölümler proje ilerlerken tekrar sorulacaktır.
 

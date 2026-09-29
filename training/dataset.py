@@ -1,7 +1,7 @@
 """JSONL dataset yukleme ve butunluk kontrolleri (spec §9, §10, §21).
 
 Tasarim karari: hatalar ilk bulundugunda firlatilmaz, hepsi toplanir.
-Boylece `scripts/validate_dataset.py` bozuk bir dosyanin tum sorunlarini
+Boylece `main.py validate` bozuk bir dosyanin tum sorunlarini
 tek geciste raporlayabilir.
 """
 

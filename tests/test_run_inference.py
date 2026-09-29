@@ -16,9 +16,7 @@ torch = pytest.importorskip("torch", reason="Faz 3+ testleri icin tam requiremen
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
-import run_inference  # noqa: E402
-
+from app.cli import infer as run_inference  # noqa: E402
 from app.inference.extractor import ExtractionOutcome, GenerationTiming  # noqa: E402
 from app.inference.parsing import ExtractionResult, QueryValidationError  # noqa: E402
 from app.schemas.query import QueryRequest  # noqa: E402
@@ -41,7 +39,7 @@ def test_help_does_not_require_model_name(capsys):
 
 
 def test_missing_model_name_errors_cleanly(monkeypatch, capsys):
-    monkeypatch.delenv("BASE_MODEL", raising=False)
+    monkeypatch.setenv("BASE_MODEL", "")
     exit_code = run_inference.main(["--text", "X firmasının satışları"])
     assert exit_code == 1
     assert "model adi verilmedi" in capsys.readouterr().err
@@ -72,7 +70,7 @@ def test_successful_extraction_prints_canonical_json(mock_load, mock_extract, ca
             "--model_name",
             "org/model",
             "--adapter_path",
-            "/does/not/exist",
+            "",
         ]
     )
 
@@ -94,7 +92,7 @@ def test_failed_extraction_exits_nonzero(mock_load, mock_extract, capsys):
     )
 
     exit_code = run_inference.main(
-        ["--text", "X", "--model_name", "org/model", "--adapter_path", "/does/not/exist"]
+        ["--text", "X", "--model_name", "org/model", "--adapter_path", ""]
     )
 
     out = capsys.readouterr().out
@@ -106,10 +104,18 @@ def test_failed_extraction_exits_nonzero(mock_load, mock_extract, capsys):
 def test_cli_help_runs_as_subprocess_without_torch_import_error():
     """CLI'nin gercek surecte de calistigini dogrular (import hatasi yok)."""
     proc = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "scripts" / "run_inference.py"), "--help"],
+        [sys.executable, "-m", "app.cli.infer", "--help"],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
     )
     assert proc.returncode == 0
     assert "--text" in proc.stdout
+
+
+def test_missing_explicit_adapter_does_not_silently_use_base_model(tmp_path, capsys):
+    code = run_inference.main(
+        ["--text", "x", "--model_name", "org/model", "--adapter_path", str(tmp_path / "missing")]
+    )
+    assert code == 1
+    assert "adapter yolu bulunamadi" in capsys.readouterr().err

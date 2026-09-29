@@ -13,6 +13,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.paths import default_env_file
+
 DevicePreference = Literal["auto", "cuda", "mps", "cpu"]
 DtypePreference = Literal["auto", "float32", "float16", "bfloat16"]
 
@@ -28,13 +30,23 @@ class Settings(BaseSettings):
 
     # Spec §13: model kaynak kodda sabitlenmez.
     base_model: str = Field(default="", alias="BASE_MODEL")
-    adapter_path: str = Field(default="./models/latest", alias="ADAPTER_PATH")
+    adapter_path: str = Field(default="./model_adapter", alias="ADAPTER_PATH")
 
     # Spec §15: dusuk tutulur, olculerek ayarlanir.
     max_new_tokens: int = Field(default=192, alias="MAX_NEW_TOKENS", gt=0)
 
     device: DevicePreference = Field(default="auto", alias="DEVICE")
     model_dtype: DtypePreference = Field(default="auto", alias="MODEL_DTYPE")
+    merge_adapter: bool = Field(default=True, alias="MERGE_ADAPTER")
+    attention_implementation: Literal["auto", "eager", "sdpa"] = Field(
+        default="auto", alias="ATTENTION_IMPLEMENTATION"
+    )
+    prompt_format: Literal["auto", "plain", "chat"] = Field(default="auto", alias="PROMPT_FORMAT")
+    allow_retry: bool = Field(default=False, alias="ALLOW_RETRY")
+    warmup_runs: int = Field(default=1, alias="WARMUP_RUNS", ge=0, le=10)
+    max_input_chars: int = Field(default=4000, alias="MAX_INPUT_CHARS", gt=0)
+    max_input_tokens: int = Field(default=1024, alias="MAX_INPUT_TOKENS", gt=0)
+    feedback_db: str = Field(default="storage/feedback/evaluation.sqlite3", alias="FEEDBACK_DB")
 
     host: str = Field(default="127.0.0.1", alias="HOST")
     port: int = Field(default=8000, alias="PORT", gt=0, lt=65536)
@@ -46,4 +58,4 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     """Ayarlari okur. Test edilebilir kalmasi icin cache'lenmez."""
-    return Settings()
+    return Settings(_env_file=default_env_file())

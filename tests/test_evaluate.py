@@ -137,6 +137,18 @@ def test_semantic_match_true_for_identical():
     assert semantic_match(q(), q()) is True
 
 
+def test_semantic_match_does_not_equate_different_rejection_statuses():
+    expected = QueryRequest(status="ambiguous", clarification="Hangi veri?")
+    predicted = QueryRequest(status="conflicting", clarification="Çelişkili istek.")
+    assert not semantic_match(expected, predicted)
+
+
+def test_semantic_match_allows_different_clarification_wording_for_same_status():
+    expected = QueryRequest(status="ambiguous", clarification="Hangi veri?")
+    predicted = QueryRequest(status="ambiguous", clarification="Veriyi belirtiniz.")
+    assert semantic_match(expected, predicted)
+
+
 # --- evaluate_records: temel oranlar ---
 
 
@@ -337,7 +349,7 @@ def test_predicted_status_label_is_extraction_failed_on_schema_error():
     assert rec.predicted_status_label == EXTRACTION_FAILED_LABEL
 
 
-# --- to_dict (scripts/benchmark.py --dump_predictions ciktisi bunu kullanir) ---
+# --- to_dict (main.py benchmark --dump_predictions ciktisi bunu kullanir) ---
 
 
 def test_to_dict_reflects_successful_exact_match():

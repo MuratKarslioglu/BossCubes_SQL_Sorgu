@@ -1,0 +1,4 @@
+# Faz 1 + Faz 2 icin yeterli olan minimum bagimlilik seti.
+# Sema, dataset dogrulama ve formatlama katmanlari torch gerektirmez.
+pydantic>=2.7,<3
+pydantic-settings>=2.2,<3

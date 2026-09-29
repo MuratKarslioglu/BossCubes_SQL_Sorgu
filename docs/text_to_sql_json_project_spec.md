@@ -1,6 +1,9 @@
 # Turkish Text → SQL-JSON Extractor
 ## Project Architecture, Development Plan, and Implementation Specification
 
+> Historical design specification. The current folder layout, setup instructions
+> and runnable commands are maintained in [README.md](../README.md).
+
 ## 1. Project Goal
 
 The goal of this project is to build a **small, local, deterministic language model system** that converts a Turkish natural-language request into a strict JSON representation containing the information required to later build an SQL query.
@@ -450,6 +453,11 @@ Output:
 ---
 
 # 8. Repository Architecture
+
+This is the original design specification. The tree below describes the initial
+proposal, not the current implementation layout. For runnable commands and the
+current `app/cli/`, `scripts/data/`, `requirements/` and `storage/` layout, use
+[README.md](../README.md).
 
 Create the repository approximately as follows:
 

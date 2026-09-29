@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+.venv-dev/
+.venv-*/
 venv/
 
 # Test / arac cache
@@ -13,29 +15,36 @@ htmlcov/
 
 # Ortam
 .env
+.env.*
+!.env.example
+!configs/*.env
+.agents/
+.codex/
+.claude/
+.idea/
+.vscode/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.key
+*.pem
+*.p12
 
-# Model ciktilari ve checkpointler
-models/*
-!models/.gitkeep
+# Yerel model, veri ve degerlendirmeler hicbir zaman paylasilmaz.
+# Uygulamanin gerekli, yayinlanabilir LoRA agirliklari model_adapter/ altindadir.
+storage/*
+!storage/.gitkeep
+artifacts/
 
-# Benchmark ciktilari
-benchmarks/
-
-# Dataset dosyalari repoda tutulmaz (ayrica saglanir).
-# `**` alt klasorleri de kapsar -- `datasets/*.jsonl` yalnizca datasets/'in
-# DOGRUDAN icindeki dosyalari yakalar, alt klasorleri (ör. datasets/sql_json_
-# dataset_v2_professional/train.jsonl) KACIRIR; bu yuzden bir kez yanlislikla
-# commit'lenmislerdi.
-datasets/**/*.jsonl
-datasets/**/*.jsonl.orig
-
-# Harici (Kaggle/GitHub) kaynakli ham/donusturulmus veri - lisans netlesene kadar
-# hicbir zaman commit edilmez (bkz. datasets/external/LICENSE_NOTES.md)
-datasets/external/
-
-# TURSpider/TUR2SQL'den turetilen dagilim-disi (OOD) degerlendirme seti -
-# yalniz benchmark icin, egitime asla dahil edilmez
-datasets/ood_eval/
+# Eski klasor adlariyla olusturulan yerel veriler de ozel kalir.
+/models/
+/datasets/
+/feedback/
+/logs/
+/benchmarks/
 
 # macOS
 .DS_Store

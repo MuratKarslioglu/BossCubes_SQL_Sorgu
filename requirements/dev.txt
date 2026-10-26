@@ -3,3 +3,6 @@
 pytest>=8.2
 ruff>=0.6
 httpx>=0.28,<0.29
+
+# Kaggle'dan harici veri seti indirmek icin (bkz. datasets/external/LICENSE_NOTES.md)
+kaggle>=1.6

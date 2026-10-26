@@ -332,6 +332,37 @@ def convert_turspider_row(sql: str) -> dict[str, Any] | None:
     }
 
 
+def process_kaggle_turkish_query_sql_file(csv_path: Path, stats: ConversionStats) -> list[dict[str, Any]]:
+    """kaggle.com/datasets/sitembari/turkish-query-and-sql-trke-sorular-ve-sql.
+
+    Tek dosya, `Input`/`Query` sutunlu duz CSV -- ayri train/dev split'i yok,
+    bu yuzden OOD ciktisi uretilmez, tumu train adayi olarak islenir. Lisans
+    ODbL-1.0 (bkz. datasets/external/LICENSE_NOTES.md) -- TUR2SQL/TURSpider'in
+    aksine gecici git transferine izin verildi, ama donusturulmus cikti da
+    tutarlilik icin datasets/external/ altinda (yani .gitignore kapsaminda)
+    kalir. DELETE/UPDATE satirlari (kaynagin ucte biri) semamiz salt-okunur
+    oldugu icin bastan atlanir; TURSpider'daki ayni sqlglot tek-tablo/join'siz
+    siniflandirici (`convert_turspider_row`) dogrudan tekrar kullanilir.
+    """
+    results = []
+    with csv_path.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            question = (row.get("Input") or "").strip()
+            sql = (row.get("Query") or "").strip()
+            if not question or not sql or not sql.upper().startswith("SELECT"):
+                continue
+            stats.read += 1
+            converted = convert_turspider_row(sql)
+            if converted is None:
+                stats.incompatible += 1
+                continue
+            validated = _validate(converted, stats)
+            if validated is not None:
+                results.append({"input": question, "output": validated})
+    return results
+
+
 def process_turspider_file(
     csv_path: Path, hardness_filter: set[str] | None, stats: ConversionStats
 ) -> list[dict[str, Any]]:
@@ -440,6 +471,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--skip-tur2sql", action="store_true")
     parser.add_argument("--skip-turspider", action="store_true")
+    parser.add_argument(
+        "--kaggle-turkish-query-sql-csv",
+        type=Path,
+        default=None,
+        help="sitembari/turkish-query-and-sql-trke-sorular-ve-sql CSV yolu (verilmezse atlanir)",
+    )
     args = parser.parse_args(argv)
 
     hardness_filter = (
@@ -503,6 +540,17 @@ def main(argv: list[str] | None = None) -> int:
         ood_rows = drop_leaked_ood_rows(all_train_rows, ood_rows)
         write_jsonl(ood_rows, args.ood_out_dir / "turspider_ood.jsonl", "turspider", None)
         print(ood_stats.report("TURSpider dev (OOD)"))
+
+    if args.kaggle_turkish_query_sql_csv is not None:
+        train_stats = ConversionStats()
+        kaggle_rows = process_kaggle_turkish_query_sql_file(args.kaggle_turkish_query_sql_csv, train_stats)
+        write_jsonl(
+            kaggle_rows,
+            args.train_out_dir / "kaggle_turkish_query_sql_converted_train.jsonl",
+            "kaggle_turkish_query_sql",
+            "train",
+        )
+        print(train_stats.report("Kaggle turkish-query-sql train"))
 
     return 0
 
